@@ -1,35 +1,49 @@
 const { Web3 } = require('web3');
 const TelegramBot = require('node-telegram-bot-api');
 
-// SABIT DEGERLER
+// 1. AYARLAR
 const CONFIG = {
   TELEGRAM_API_KEY: "7786040626:AAGYSMfTy7xbZ_x6uyNOOBi-e7PUsMJ-28Y",
   CHAT_ID: "1616739367",
-  BSC_NODE_URL: "https://bsc-dataseed.binance.org/",
+  BSC_NODE_URL: "https://bsc-dataseed.binance.org/", 
   CONTRACT_ADDRESS: "0x42395Db998595DC7256aF2a6f10DC7b2E6006993"
 };
 
-// Loglama fonksiyonu
-const log = (message, error = null) => {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] ${message}`);
-  if (error) console.error(`[ERROR] ${error.stack || error}`);
-};
+// 2. LOGLAMA
+function log(message, error = null) {
+  console.log(`[${new Date().toISOString()}] ${message}`);
+  if (error) console.error(`[ERROR] ${error.message}`);
+}
 
-// Telegram Bot (POLLING KAPALI)
-const bot = new TelegramBot(CONFIG.TELEGRAM_API_KEY, { polling: false });
+// 3. TELEGRAM BOT (POLLING AKTİF)
+const bot = new TelegramBot(CONFIG.TELEGRAM_API_KEY, { 
+  polling: {
+    interval: 300,
+    autoStart: true,
+    params: {
+      timeout: 10
+    }
+  }
+});
 
-// Web3 bağlantısı
+// 4. WEB3 BAĞLANTISI
 const web3 = new Web3(CONFIG.BSC_NODE_URL);
 
-// KONTROL: Web3 bağlantısını test et
-web3.eth.getBlockNumber()
-  .then(block => log(`✅ BSC bağlantısı başarılı. Son blok: ${block}`))
-  .catch(err => log(`❌ BSC bağlantı hatası: ${err.message}`));
+// 5. KONTROL MEKANİZMASI
+async function checkConnection() {
+  try {
+    const block = await web3.eth.getBlockNumber();
+    log(`✅ BSC bağlantısı başarılı. Son blok: ${block}`);
+    return true;
+  } catch (error) {
+    log(`❌ BSC bağlantı hatası: ${error.message}`);
+    return false;
+  }
+}
 
-// Kontrat ABI (Sadece gerekli event tanımı)
-const contractABI = [
-  {
+// 6. EVENT DİNLEME
+async function startEventListener() {
+  const contractABI = [{
     "anonymous": false,
     "inputs": [
       {"indexed": true, "name": "buyer", "type": "address"},
@@ -39,52 +53,47 @@ const contractABI = [
     ],
     "name": "TokensPurchased",
     "type": "event"
+  }];
+
+  const contract = new web3.eth.Contract(contractABI, CONFIG.CONTRACT_ADDRESS);
+
+  contract.events.TokensPurchased()
+    .on('data', event => {
+      const bnbAmount = web3.utils.fromWei(event.returnValues.bnbAmount, 'ether');
+      const message = `🚀 Yeni Satın Alma!\n👤 ${event.returnValues.buyer}\n💰 ${bnbAmount} BNB`;
+      bot.sendMessage(CONFIG.CHAT_ID, message);
+      log(`Bildirim gönderildi: ${message}`);
+    })
+    .on('error', err => {
+      log("Event dinleme hatası", err);
+      setTimeout(startEventListener, 5000);
+    });
+}
+
+// 7. BAŞLANGIÇ
+async function initialize() {
+  const isConnected = await checkConnection();
+  if (isConnected) {
+    startEventListener();
+    log(`🤖 Bot başlatıldı. Kontrat dinleniyor: ${CONFIG.CONTRACT_ADDRESS}`);
+  } else {
+    setTimeout(initialize, 10000);
   }
-];
+}
 
-// Kontrat instance'ı
-const contract = new web3.eth.Contract(contractABI, CONFIG.CONTRACT_ADDRESS);
-
-// EVENT DİNLEME (Yeni ve basit yöntem)
-const subscription = web3.eth.subscribe('logs', {
-  address: CONFIG.CONTRACT_ADDRESS,
-  topics: [web3.utils.sha3('TokensPurchased(address,uint256,uint256,uint256)')]
-}, (error, log) => {
-  if (error) {
-    log("Event dinleme hatası", error);
-    return;
-  }
-
-  try {
-    const event = web3.eth.abi.decodeLog(
-      [
-        {"type": "address", "name": "buyer", "indexed": true},
-        {"type": "uint256", "name": "bnbAmount"},
-        {"type": "uint256", "name": "tokenAmount"},
-        {"type": "uint256", "name": "timestamp"}
-      ],
-      log.data,
-      log.topics.slice(1)
-    );
-
-    const bnbAmount = web3.utils.fromWei(event.bnbAmount, 'ether');
-    const message = `🚀 Yeni Satın Alma!\n👤 ${event.buyer}\n💰 ${bnbAmount} BNB`;
-    bot.sendMessage(CONFIG.CHAT_ID, message);
-    log(`Bildirim gönderildi: ${message}`);
-  } catch (err) {
-    log("Event decode hatası", err);
-  }
+// 8. KOMUTLAR
+bot.onText(/\/start/, (msg) => {
+  bot.sendMessage(msg.chat.id, "🤖 Presale Bot Aktif!");
 });
 
-subscription.on('error', err => {
-  log("Subscription hatası", err);
-  setTimeout(() => {
-    subscription.subscribe();
-  }, 5000);
+bot.onText(/\/check/, async (msg) => {
+  const isConnected = await checkConnection();
+  bot.sendMessage(msg.chat.id, isConnected ? "✅ BSC bağlantısı aktif" : "❌ BSC bağlantı hatası");
 });
 
-log(`✅ Dinleme başladı: ${CONFIG.CONTRACT_ADDRESS}`);
+// 9. UYGULAMAYI BAŞLAT
+initialize();
 
-// Hata yakalayıcılar
-process.on('unhandledRejection', (error) => log('⛔ İşlenmemiş hata:', error));
-process.on('uncaughtException', (error) => log('⛔ Yakalanmamış hata:', error));
+// 10. HATA YAKALAYICILAR
+process.on('unhandledRejection', error => log('⛔ İşlenmemiş hata:', error));
+process.on('uncaughtException', error => log('⛔ Yakalanmamış hata:', error));
