@@ -3,41 +3,20 @@ const TelegramBot = require('node-telegram-bot-api');
 require('dotenv').config();
 
 // Telegram Bot
-const bot = new TelegramBot(process.env.TELEGRAM_API_KEY, { polling: true });
+const bot = new TelegramBot(process.env.TELEGRAM_API_KEY, { polling: false });
 const chatId = process.env.CHAT_ID;
 
 // Web3 ve Sözleşme Ayarları
-const web3 = new Web3(process.env.BSC_NODE_URL);
+const web3 = new Web3(new Web3.providers.WebsocketProvider(process.env.BSC_NODE_URL));
 const contractAddress = process.env.CONTRACT_ADDRESS;
 const contractABI = [
-  // ABI’ni buraya kopyala (verdiğin JSON’dan)
   {
     "anonymous": false,
     "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "buyer",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "bnbAmount",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "tokenAmount",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
-      }
+      { "indexed": true, "internalType": "address", "name": "buyer", "type": "address" },
+      { "indexed": false, "internalType": "uint256", "name": "bnbAmount", "type": "uint256" },
+      { "indexed": false, "internalType": "uint256", "name": "tokenAmount", "type": "uint256" },
+      { "indexed": false, "internalType": "uint256", "name": "timestamp", "type": "uint256" }
     ],
     "name": "TokensPurchased",
     "type": "event"
@@ -56,7 +35,6 @@ const contractABI = [
     "stateMutability": "view",
     "type": "function"
   }
-  // Diğer ABI girişlerini ekleyebilirsin, ama şimdilik bu yeter
 ];
 
 const contract = new web3.eth.Contract(contractABI, contractAddress);
@@ -69,7 +47,7 @@ contract.events.TokensPurchased({ fromBlock: 'latest' })
   .on('data', async (event) => {
     const { buyer, bnbAmount, tokenAmount, timestamp } = event.returnValues;
     const bnb = toBNB(bnbAmount);
-    const tokens = web3.utils.fromWei(tokenAmount, 'ether'); // Tokenın decimal’ına göre ayarla
+    const tokens = toBNB(tokenAmount); // Token decimal’ına göre ayarla (genelde 18)
     const message = `
 🚀 Yeni Alım!
 👤 Alıcı: ${buyer}
@@ -77,27 +55,23 @@ contract.events.TokensPurchased({ fromBlock: 'latest' })
 🎟️ Token: ${tokens} TOKEN
 🕒 Zaman: ${new Date(timestamp * 1000).toLocaleString()}
     `;
-    await bot.sendMessage(chatId, message);
+    try {
+      await bot.sendMessage(chatId, message);
+      console.log('Bildirim gönderildi:', message);
+    } catch (error) {
+      console.error('Telegram bildirim hatası:', error);
+    }
   })
-  .on('error', (error) => console.error('Event dinleme hatası:', error));
-
-// /status komutu
-bot.onText(/\/status/, async (msg) => {
-  const chatId = msg.chat.id;
-  try {
-    const totalBNB = await contract.methods.getTotalBNB().call();
-    const remainingTokens = await contract.methods.getRemainingTokens().call();
-    const message = `
-📊 Presale Durumu
-💰 Toplam Biriken: ${toBNB(totalBNB)} BNB
-🎟️ Kalan Token: ${web3.utils.fromWei(remainingTokens, 'ether')} TOKEN
-    `;
-    await bot.sendMessage(chatId, message);
-  } catch (error) {
-    await bot.sendMessage(chatId, 'Hata oluştu, lütfen tekrar deneyin.');
-    console.error('Status hatası:', error);
-  }
-});
+  .on('error', (error) => {
+    console.error('Event dinleme hatası:', error);
+  });
 
 // Botun çalıştığını logla
 console.log('Bot çalışıyor...');
+
+// Hata durumunda bağlantıyı yeniden kur
+web3.eth.net.isListening()
+  .catch(() => {
+    console.log('WebSocket bağlantısı koptu, yeniden bağlanıyor...');
+    process.exit(1); // Heroku otomatik yeniden başlatır
+  });
