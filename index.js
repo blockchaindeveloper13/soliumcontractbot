@@ -1,4 +1,4 @@
-const Web3 = require('web3');
+const { Web3 } = require('web3');
 const TelegramBot = require('node-telegram-bot-api');
 require('dotenv').config();
 
@@ -7,7 +7,7 @@ const bot = new TelegramBot(process.env.TELEGRAM_API_KEY, { polling: false });
 const chatId = process.env.CHAT_ID;
 
 // Web3 ve Sözleşme Ayarları
-const web3 = new Web3(new Web3.providers.WebsocketProvider(process.env.BSC_NODE_URL));
+const web3 = new Web3(process.env.BSC_NODE_URL); // WebSocket URL direkt verilecek
 const contractAddress = process.env.CONTRACT_ADDRESS;
 const contractABI = [
   {
@@ -20,20 +20,6 @@ const contractABI = [
     ],
     "name": "TokensPurchased",
     "type": "event"
-  },
-  {
-    "inputs": [],
-    "name": "getTotalBNB",
-    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "getRemainingTokens",
-    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
-    "stateMutability": "view",
-    "type": "function"
   }
 ];
 
@@ -47,7 +33,7 @@ contract.events.TokensPurchased({ fromBlock: 'latest' })
   .on('data', async (event) => {
     const { buyer, bnbAmount, tokenAmount, timestamp } = event.returnValues;
     const bnb = toBNB(bnbAmount);
-    const tokens = toBNB(tokenAmount); // Token decimal’ına göre ayarla (genelde 18)
+    const tokens = toBNB(tokenAmount); // Token decimal’ına göre ayarla
     const message = `
 🚀 Yeni Alım!
 👤 Alıcı: ${buyer}
@@ -64,12 +50,13 @@ contract.events.TokensPurchased({ fromBlock: 'latest' })
   })
   .on('error', (error) => {
     console.error('Event dinleme hatası:', error);
+    process.exit(1); // WebSocket koparsa Heroku yeniden başlatır
   });
 
 // Botun çalıştığını logla
 console.log('Bot çalışıyor...');
 
-// Hata durumunda bağlantıyı yeniden kur
+// WebSocket bağlantısını kontrol et
 web3.eth.net.isListening()
   .catch(() => {
     console.log('WebSocket bağlantısı koptu, yeniden bağlanıyor...');
