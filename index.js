@@ -1,11 +1,15 @@
 const { Web3 } = require('web3');
 const TelegramBot = require('node-telegram-bot-api');
 
-// SABIT DEGERLER (DÜZELTİLMİŞ RPC URL)
+// SABIT DEGERLER (Alternatif RPC URL'ler)
 const CONFIG = {
   TELEGRAM_API_KEY: "7786040626:AAGYSMfTy7xbZ_x6uyNOOBi-e7PUsMJ-28Y",
   CHAT_ID: "1616739367",
-  BSC_NODE_URL: "https://rpc.ankr.com/bsc", // DÜZELTİLDİ
+  BSC_NODE_URLS: [
+    "https://bsc-dataseed.binance.org/",
+    "https://bsc-dataseed1.defibit.io/",
+    "https://rpc.ankr.com/bsc"
+  ],
   CONTRACT_ADDRESS: "0x42395Db998595DC7256aF2a6f10DC7b2E6006993"
 };
 
@@ -16,19 +20,33 @@ const log = (message, error = null) => {
   if (error) console.error(`[ERROR] ${error.stack || error}`);
 };
 
-// Telegram Bot (POLLING AKTİF)
-const bot = new TelegramBot(CONFIG.TELEGRAM_API_KEY, {
-  polling: true, // POLLING MODU AKTİF
-  filepath: false
-});
+// Telegram Bot (Polling KAPALI)
+const bot = new TelegramBot(CONFIG.TELEGRAM_API_KEY, { polling: false });
 
-// Web3 bağlantısı (timeout ile)
-const web3 = new Web3(
-  new Web3.providers.HttpProvider(CONFIG.BSC_NODE_URL, {
-    timeout: 30000,
-    headers: [{ name: 'Content-Type', value: 'application/json' }]
-  })
-);
+// Web3 bağlantısı (alternatif URL'lerle)
+let currentRpcIndex = 0;
+let web3;
+
+async function initializeWeb3() {
+  for (let i = 0; i < CONFIG.BSC_NODE_URLS.length; i++) {
+    try {
+      const provider = new Web3.providers.HttpProvider(CONFIG.BSC_NODE_URLS[i], {
+        timeout: 30000,
+        headers: [{ name: 'Content-Type', value: 'application/json' }]
+      });
+      
+      web3 = new Web3(provider);
+      
+      const block = await web3.eth.getBlockNumber();
+      currentRpcIndex = i;
+      log(`Bağlantı başarılı: ${CONFIG.BSC_NODE_URLS[i]}, Son blok: ${block}`);
+      return true;
+    } catch (error) {
+      log(`RPC bağlantı hatası (${CONFIG.BSC_NODE_URLS[i]}):`, error);
+    }
+  }
+  return false;
+}
 
 // Kontrat ayarları
 const contractABI = [{
@@ -43,27 +61,18 @@ const contractABI = [{
   "type": "event"
 }];
 
-const contract = new web3.eth.Contract(contractABI, CONFIG.CONTRACT_ADDRESS);
-
-// Bağlantı testi
-async function checkConnection() {
-  try {
-    const block = await web3.eth.getBlockNumber();
-    log(`BSC bağlantısı başarılı. Son blok: ${block}`);
-    return true;
-  } catch (error) {
-    log("BSC bağlantı hatası", error);
-    return false;
-  }
-}
+let contract;
 
 // Event dinleme
 async function startEventListening() {
-  const isConnected = await checkConnection();
+  const isConnected = await initializeWeb3();
   if (!isConnected) {
+    log("Tüm RPC bağlantıları başarısız. 10 saniye sonra tekrar denenecek...");
     setTimeout(startEventListening, 10000);
     return;
   }
+
+  contract = new web3.eth.Contract(contractABI, CONFIG.CONTRACT_ADDRESS);
 
   contract.events.TokensPurchased()
     .on('data', event => {
@@ -72,27 +81,26 @@ async function startEventListening() {
       bot.sendMessage(CONFIG.CHAT_ID, message);
       log(message);
     })
+    .on('changed', event => log("Event changed:", event))
     .on('error', err => {
       log("Event dinleme hatası", err);
       setTimeout(startEventListening, 5000);
     });
 }
 
-// Bot komutları
-bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(msg.chat.id, "🤖 Presale Bot Aktif!\n\nBSC bağlantısı: " + CONFIG.BSC_NODE_URL);
-});
-
-bot.onText(/\/check/, async (msg) => {
-  const isConnected = await checkConnection();
-  bot.sendMessage(msg.chat.id, isConnected ? "✅ BSC bağlantısı aktif" : "❌ BSC bağlantı hatası");
-});
-
 // Uygulamayı başlat
 startEventListening();
+
+// Her 5 dakikada bir bağlantıyı kontrol et
+setInterval(async () => {
+  try {
+    await web3.eth.getBlockNumber();
+  } catch (error) {
+    log("Bağlantı kontrol hatası", error);
+    startEventListening();
+  }
+}, 300000);
 
 // Hata yakalayıcılar
 process.on('unhandledRejection', error => log('İşlenmemiş hata:', error));
 process.on('uncaughtException', error => log('Yakalanmamış hata:', error));
-
-log("🤖 Bot başlatıldı. BSC dinleme aktif...");
