@@ -5,7 +5,6 @@
   "scripts": {
     "start": "node index.js"
   },
- {
   "dependencies": {
     "web3": "^4.0.0",
     "node-telegram-bot-api": "^0.61.0",
@@ -16,4 +15,3 @@
     "npm": "10.x"
   }
 }
-
