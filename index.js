@@ -2,19 +2,20 @@ const { Web3 } = require('web3');
 const TelegramBot = require('node-telegram-bot-api');
 require('dotenv').config();
 
-// Loglama için yardımcı fonksiyon
+// Loglama fonksiyonu
 const log = (message, error = null) => {
-  console.log(`[INFO] ${new Date().toISOString()} - ${message}`);
-  if (error) console.error(`[ERROR] ${new Date().toISOString()} - ${error.stack || error}`);
+  const timestamp = new Date().toISOString();
+  console.log(`[INFO] ${timestamp} - ${message}`);
+  if (error) console.error(`[ERROR] ${timestamp} - ${error.stack || error}`);
 };
 
 // Environment değişkenlerini kontrol et
+const requiredEnvVars = ['TELEGRAM_API_KEY', 'CHAT_ID', 'BSC_NODE_URL', 'CONTRACT_ADDRESS'];
 try {
-  if (!process.env.TELEGRAM_API_KEY) throw new Error('TELEGRAM_API_KEY eksik');
-  if (!process.env.CHAT_ID) throw new Error('CHAT_ID eksik');
-  if (!process.env.BSC_NODE_URL) throw new Error('BSC_NODE_URL eksik');
-  if (!process.env.CONTRACT_ADDRESS) throw new Error('CONTRACT_ADDRESS eksik');
-  log('Environment değişkenleri yüklendi');
+  for (const envVar of requiredEnvVars) {
+    if (!process.env[envVar]) throw new Error(`${envVar} eksik`);
+  }
+  log('Environment değişkenleri kontrol edildi');
 } catch (error) {
   log('Environment değişkeni hatası', error);
   process.exit(1);
@@ -24,13 +25,15 @@ try {
 let bot;
 try {
   bot = new TelegramBot(process.env.TELEGRAM_API_KEY, { polling: false });
-  log('Telegram bot başlatıldı');
+  bot.getMe().then(() => log('Telegram bot başlatıldı')).catch((err) => {
+    throw new Error(`Telegram bot başlatma hatası: ${err.message}`);
+  });
 } catch (error) {
   log('Telegram bot başlatma hatası', error);
   process.exit(1);
 }
 
-// Web3 ve Sözleşme Ayarları
+// Web3 başlat
 let web3;
 try {
   web3 = new Web3(process.env.BSC_NODE_URL);
@@ -40,25 +43,26 @@ try {
   process.exit(1);
 }
 
+// Sözleşme ayarları
 const contractAddress = process.env.CONTRACT_ADDRESS;
 const contractABI = [
   {
-    "anonymous": false,
-    "inputs": [
-      { "indexed": true, "internalType": "address", "name": "buyer", "type": "address" },
-      { "indexed": false, "internalType": "uint256", "name": "bnbAmount", "type": "uint256" },
-      { "indexed": false, "internalType": "uint256", "name": "tokenAmount", "type": "uint256" },
-      { "indexed": false, "internalType": "uint256", "name": "timestamp", "type": "uint256" }
+    anonymous: false,
+    inputs: [
+      { indexed: true, internalType: 'address', name: 'buyer', type: 'address' },
+      { indexed: false, internalType: 'uint256', name: 'bnbAmount', type: 'uint256' },
+      { indexed: false, internalType: 'uint256', name: 'tokenAmount', type: 'uint256' },
+      { indexed: false, internalType: 'uint256', name: 'timestamp', type: 'uint256' }
     ],
-    "name": "TokensPurchased",
-    "type": "event"
+    name: 'TokensPurchased',
+    type: 'event'
   }
 ];
 
 let contract;
 try {
   contract = new web3.eth.Contract(contractABI, contractAddress);
-  if (!contract.events) throw new Error('Sözleşme eventi undefined');
+  if (!contract) throw new Error('Sözleşme nesnesi oluşturulamadı');
   log('Sözleşme başlatıldı');
 } catch (error) {
   log('Sözleşme başlatma hatası', error);
@@ -75,11 +79,12 @@ const toBNB = (wei) => {
   }
 };
 
-// TokensPurchased event’ini dinle
+// Event dinleme
 try {
+  const eventSignature = web3.utils.sha3('TokensPurchased(address,uint256,uint256,uint256)');
   const subscription = web3.eth.subscribe('logs', {
     address: contractAddress,
-    topics: [web3.utils.sha3('TokensPurchased(address,uint256,uint256,uint256)')]
+    topics: [eventSignature]
   }, async (error, logData) => {
     if (error) {
       log('Log abonelik hatası', error);
