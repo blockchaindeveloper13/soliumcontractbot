@@ -18,8 +18,9 @@ const CONFIG = {
   POLLING_TIMEOUT: 10,
   MAX_POLLING_RETRIES: 3,
   EVENT_POLLING_INTERVAL: 60000, // Olay tarama sıklığı (60 saniye)
-  MAX_BLOCK_RANGE: 3, // Tek seferde taranacak maksimum blok sayısı
-  RETRY_DELAY: 10000 // Limit aşımı sonrası yeniden deneme gecikmesi (10 saniye)
+  MAX_BLOCK_RANGE: 2, // Tek seferde taranacak maksimum blok sayısı
+  RETRY_DELAY: 15000, // Limit aşımı sonrası yeniden deneme gecikmesi (15 saniye)
+  MAX_RETRIES: 3 // Limit aşımı için maksimum yeniden deneme sayısı
 };
 
 // 2. LOGLAMA
@@ -59,7 +60,7 @@ let web3;
 let contract;
 let currentNodeIndex = 0;
 let lastProcessedBlock = BigInt(0); // BigInt olarak tanımla
-const TOKEN_DECIMALS = 18; // Tokenın ondalık basamak sayısı (doğrulayın!)
+const TOKEN_DECIMALS = 18; // Tokenın ondalık basamak sayısı (BSCScan'de doğrulayın!)
 
 const initializeWeb3 = () => {
   try {
@@ -346,12 +347,34 @@ async function startEventPolling() {
           : currentBlock;
 
         log(`Olaylar taranıyor, blok aralığı: ${fromBlock} - ${toBlock}`);
-        const logs = await web3.eth.getPastLogs({
-          address: CONFIG.CONTRACT_ADDRESS,
-          topics: [eventSignature],
-          fromBlock: fromBlock,
-          toBlock: toBlock
-        });
+        let logs;
+        let retries = 0;
+        while (retries < CONFIG.MAX_RETRIES) {
+          try {
+            logs = await web3.eth.getPastLogs({
+              address: CONFIG.CONTRACT_ADDRESS,
+              topics: [eventSignature],
+              fromBlock: fromBlock,
+              toBlock: toBlock
+            });
+            break; // Başarılıysa döngüden çık
+          } catch (error) {
+            if (error.message.includes('limit exceeded')) {
+              retries++;
+              log(`Limit aşımı hatası, yeniden deneme ${retries}/${CONFIG.MAX_RETRIES}...`);
+              await new Promise(resolve => setTimeout(resolve, CONFIG.RETRY_DELAY));
+            } else {
+              throw error; // Diğer hatalarda döngüden çık
+            }
+          }
+        }
+
+        if (!logs) {
+          log("Limit aşımı hatası, tüm denemeler başarısız. Düğüm değiştiriliyor...");
+          currentNodeIndex = (currentNodeIndex + 1) % CONFIG.BSC_NODES.length;
+          initializeWeb3();
+          return;
+        }
 
         for (const logData of logs) {
           try {
@@ -363,7 +386,7 @@ async function startEventPolling() {
             );
 
             const bnbAmount = web3.utils.fromWei(decodedLog.bnbAmount, 'ether');
-            const tokenAmount = web3.utils.fromWei(decodedLog.tokenAmount, 'ether'); // Tokenı sadeleştir (18 ondalık varsayımı)
+            const tokenAmount = web3.utils.fromWei(decodedLog.tokenAmount, 'ether'); // Tokenı sadeleştir
             const message = `🚀 Yeni Satın Alma!\n👤 ${decodedLog.buyer}\n💰 ${bnbAmount} BNB\n🪙 ${tokenAmount} Token\n🕒 ${new Date(Number(decodedLog.timestamp) * 1000).toISOString()}`;
             await bot.sendMessage(CONFIG.CHAT_ID, message);
             log(`Bildirim gönderildi: ${message}`);
@@ -375,38 +398,7 @@ async function startEventPolling() {
         lastProcessedBlock = toBlock;
         log(`Son işlenen blok güncellendi: ${lastProcessedBlock}`);
       } catch (error) {
-        if (error.message.includes('limit exceeded')) {
-          log("Limit aşımı hatası, yeniden deneme için bekleniyor...");
-          await new Promise(resolve => setTimeout(resolve, CONFIG.RETRY_DELAY));
-          try {
-            const retryLogs = await web3.eth.getPastLogs({
-              address: CONFIG.CONTRACT_ADDRESS,
-              topics: [eventSignature],
-              fromBlock: fromBlock,
-              toBlock: toBlock
-            });
-            for (const logData of retryLogs) {
-              const decodedLog = web3.eth.abi.decodeLog(
-                contract.options.jsonInterface.find(item => item.name === 'TokensPurchased').inputs,
-                logData.data,
-                logData.topics.slice(1)
-              );
-              const bnbAmount = web3.utils.fromWei(decodedLog.bnbAmount, 'ether');
-              const tokenAmount = web3.utils.fromWei(decodedLog.tokenAmount, 'ether');
-              const message = `🚀 Yeni Satın Alma!\n👤 ${decodedLog.buyer}\n💰 ${bnbAmount} BNB\n🪙 ${tokenAmount} Token\n🕒 ${new Date(Number(decodedLog.timestamp) * 1000).toISOString()}`;
-              await bot.sendMessage(CONFIG.CHAT_ID, message);
-              log(`Bildirim gönderildi (yeniden deneme): ${message}`);
-            }
-            lastProcessedBlock = toBlock;
-            log(`Son işlenen blok güncellendi (yeniden deneme): ${lastProcessedBlock}`);
-          } catch (retryError) {
-            log("Yeniden deneme başarısız, düğüm değiştiriliyor...", retryError);
-            currentNodeIndex = (currentNodeIndex + 1) % CONFIG.BSC_NODES.length;
-            initializeWeb3();
-          }
-        } else {
-          log("Olay tarama hatası", error);
-        }
+        log("Olay tarama hatası", error);
       }
     }, CONFIG.EVENT_POLLING_INTERVAL);
   } catch (error) {
@@ -436,7 +428,7 @@ bot.onText(/\/info/, async (msg) => {
       `🎯 Hard Cap: ${web3.utils.fromWei(hardCap, 'ether')} BNB\n` +
       `🎯 Soft Cap: ${web3.utils.fromWei(softCap, 'ether')} BNB\n` +
       `💸 Token Fiyatı: ${web3.utils.fromWei(tokenPrice, 'ether')} BNB\n` +
-      `📈 Birim Başına Token: ${web3.utils.fromWei(tokensPerUnit, 'ether')}`;
+      `📈 Birim Başına Token: ${Number(tokensPerUnit)}`; // tokensPerUnit için sadeleştirme kaldırıldı
     await bot.sendMessage(msg.chat.id, message);
     log(`Durum bilgisi gönderildi: ${message}`);
   } catch (error) {
@@ -469,6 +461,17 @@ bot.on('polling_error', async (error) => {
       log("Maksimum yeniden deneme sayısına ulaşıldı. Çıkılıyor...");
       process.exit(1);
     }
+  } else {
+    log("Polling hatası, yeniden başlatılıyor...");
+    await bot.stopPolling();
+    setTimeout(async () => {
+      try {
+        await bot.startPolling();
+        log("Telegram bot polling yeniden başlatıldı");
+      } catch (retryError) {
+        log("Polling yeniden başlatma hatası", retryError);
+      }
+    }, CONFIG.RECONNECT_INTERVAL);
   }
 });
 
