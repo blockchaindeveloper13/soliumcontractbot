@@ -17,7 +17,8 @@ const CONFIG = {
   POLLING_INTERVAL: 300,
   POLLING_TIMEOUT: 10,
   MAX_POLLING_RETRIES: 3,
-  EVENT_POLLING_INTERVAL: 5000 // Olay tarama sıklığı (5 saniye)
+  EVENT_POLLING_INTERVAL: 20000, // Olay tarama sıklığı (20 saniye)
+  MAX_BLOCK_RANGE: 5 // Tek seferde taranacak maksimum blok sayısı
 };
 
 // 2. LOGLAMA
@@ -66,7 +67,9 @@ const initializeWeb3 = () => {
     return true;
   } catch (error) {
     log("Web3 başlatma hatası", error);
-    return false;
+    currentNodeIndex = (currentNodeIndex + 1) % CONFIG.BSC_NODES.length;
+    log(`Düğüm değiştiriliyor: ${CONFIG.BSC_NODES[currentNodeIndex]}`);
+    return initializeWeb3(); // Tekrar dene
   }
 };
 
@@ -334,12 +337,18 @@ async function startEventPolling() {
           return;
         }
 
-        log(`Olaylar taranıyor, blok aralığı: ${lastProcessedBlock + BigInt(1)} - ${currentBlock}`);
+        // Blok aralığını sınırla
+        const fromBlock = lastProcessedBlock + BigInt(1);
+        const toBlock = currentBlock - lastProcessedBlock > BigInt(CONFIG.MAX_BLOCK_RANGE)
+          ? lastProcessedBlock + BigInt(CONFIG.MAX_BLOCK_RANGE)
+          : currentBlock;
+
+        log(`Olaylar taranıyor, blok aralığı: ${fromBlock} - ${toBlock}`);
         const logs = await web3.eth.getPastLogs({
           address: CONFIG.CONTRACT_ADDRESS,
           topics: [eventSignature],
-          fromBlock: lastProcessedBlock + BigInt(1),
-          toBlock: currentBlock
+          fromBlock: fromBlock,
+          toBlock: toBlock
         });
 
         for (const logData of logs) {
@@ -352,7 +361,7 @@ async function startEventPolling() {
             );
 
             const bnbAmount = web3.utils.fromWei(decodedLog.bnbAmount, 'ether');
-            const message = `🚀 Yeni Satın Alma!\n👤 ${decodedLog.buyer}\n💰 ${bnbAmount} BNB\n🪙 ${decodedLog.tokenAmount} Token`;
+            const message = `🚀 Yeni Satın Alma!\n👤 ${decodedLog.buyer}\n💰 ${bnbAmount} BNB\n🪙 ${decodedLog.tokenAmount} Token\n🕒 ${new Date(Number(decodedLog.timestamp) * 1000).toISOString()}`;
             await bot.sendMessage(CONFIG.CHAT_ID, message);
             log(`Bildirim gönderildi: ${message}`);
           } catch (error) {
@@ -360,10 +369,16 @@ async function startEventPolling() {
           }
         }
 
-        lastProcessedBlock = currentBlock;
+        lastProcessedBlock = toBlock;
         log(`Son işlenen blok güncellendi: ${lastProcessedBlock}`);
       } catch (error) {
-        log("Olay tarama hatası", error);
+        if (error.message.includes('limit exceeded')) {
+          log("Limit aşımı hatası, düğüm değiştiriliyor...");
+          currentNodeIndex = (currentNodeIndex + 1) % CONFIG.BSC_NODES.length;
+          initializeWeb3();
+        } else {
+          log("Olay tarama hatası", error);
+        }
       }
     }, CONFIG.EVENT_POLLING_INTERVAL);
   } catch (error) {
@@ -372,7 +387,37 @@ async function startEventPolling() {
   }
 }
 
-// 10. TELEGRAM POLLING YÖNETIMI
+// 10. SÖZLEŞME DURUM SORGULAMA (/info KOMUTU)
+bot.onText(/\/info/, async (msg) => {
+  try {
+    if (!contract) throw new Error("Sözleşme nesnesi başlatılmadı.");
+    const totalRaised = BigInt(await contract.methods.totalRaised().call());
+    const remainingTokens = BigInt(await contract.methods.getRemainingTokens().call());
+    const salePaused = await contract.methods.salePaused().call();
+    const saleEnded = await contract.methods.saleEnded().call();
+    const hardCap = BigInt(await contract.methods.hardCap().call());
+    const softCap = BigInt(await contract.methods.softCap().call());
+    const tokenPrice = BigInt(await contract.methods.tokenPrice().call());
+    const tokensPerUnit = BigInt(await contract.methods.tokensPerUnit().call());
+
+    const message = `📊 Sözleşme Durumu\n` +
+      `💰 Toplam Toplanan: ${web3.utils.fromWei(totalRaised, 'ether')} BNB\n` +
+      `🪙 Kalan Tokenlar: ${remainingTokens}\n` +
+      `⏸ Satış Durduruldu mu: ${salePaused ? 'Evet' : 'Hayır'}\n` +
+      `🏁 Satış Bitti mi: ${saleEnded ? 'Evet' : 'Hayır'}\n` +
+      `🎯 Hard Cap: ${web3.utils.fromWei(hardCap, 'ether')} BNB\n` +
+      `🎯 Soft Cap: ${web3.utils.fromWei(softCap, 'ether')} BNB\n` +
+      `💸 Token Fiyatı: ${web3.utils.fromWei(tokenPrice, 'ether')} BNB\n` +
+      `📈 Birim Başına Token: ${tokensPerUnit}`;
+    await bot.sendMessage(msg.chat.id, message);
+    log(`Durum bilgisi gönderildi: ${message}`);
+  } catch (error) {
+    log("Durum sorgulama hatası", error);
+    await bot.sendMessage(msg.chat.id, "❌ Durum sorgulanırken hata oluştu.");
+  }
+});
+
+// 11. TELEGRAM POLLING YÖNETIMI
 let pollingRetries = 0;
 
 bot.on('polling_error', async (error) => {
@@ -399,7 +444,7 @@ bot.on('polling_error', async (error) => {
   }
 });
 
-// 11. BOT KOMUTLARI
+// 12. BOT KOMUTLARI
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, "🤖 Presale Bot Aktif!");
 });
@@ -409,7 +454,7 @@ bot.onText(/\/check/, async (msg) => {
   bot.sendMessage(msg.chat.id, isConnected ? "✅ BSC bağlantısı aktif" : "❌ BSC bağlantı hatası");
 });
 
-// 12. BAŞLATMA
+// 13. BAŞLATMA
 async function initialize() {
   try {
     // Çevre değişkenlerini kontrol et
@@ -452,7 +497,7 @@ async function initialize() {
   }
 }
 
-// 13. HATA YAKALAYICILAR
+// 14. HATA YAKALAYICILAR
 process.on('unhandledRejection', (error) => {
   log('İşlenmemiş hata:', error);
 });
@@ -462,7 +507,7 @@ process.on('uncaughtException', (error) => {
   process.exit(1);
 });
 
-// 14. ZARİF KAPATMA
+// 15. ZARİF KAPATMA
 process.on('SIGTERM', async () => {
   log('SIGTERM alındı. Temizlik yapılıyor...');
   try {
@@ -475,5 +520,5 @@ process.on('SIGTERM', async () => {
   }
 });
 
-// 15. UYGULAMAYI BAŞLAT
+// 16. UYGULAMAYI BAŞLAT
 initialize();
