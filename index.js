@@ -2,14 +2,21 @@ const { Web3 } = require('web3');
 const TelegramBot = require('node-telegram-bot-api');
 
 // 1. KONFIGÜRASYON
+const BSC_NODES = [
+  'https://bsc-dataseed.binance.org/',
+  'https://bsc-dataseed1.defibit.io/',
+  'https://bsc-dataseed1.ninicoin.io/'
+];
+
 const CONFIG = {
   TELEGRAM_API_KEY: process.env.TELEGRAM_API_KEY,
   CHAT_ID: process.env.CHAT_ID,
-  BSC_NODE_URL: process.env.BSC_NODE_URL || "https://bsc-dataseed.binance.org/",
   CONTRACT_ADDRESS: process.env.CONTRACT_ADDRESS,
+  BSC_NODES, // Sabit düğüm listesi
   RECONNECT_INTERVAL: 5000,
   POLLING_INTERVAL: 300,
-  POLLING_TIMEOUT: 10
+  POLLING_TIMEOUT: 10,
+  MAX_POLLING_RETRIES: 3
 };
 
 // 2. LOGLAMA
@@ -47,11 +54,13 @@ try {
 // 5. WEB3 KURULUMU
 let web3;
 let contract;
+let currentNodeIndex = 0;
 
 const initializeWeb3 = () => {
   try {
-    web3 = new Web3(CONFIG.BSC_NODE_URL);
-    log("Web3 başlatıldı.");
+    const nodeUrl = CONFIG.BSC_NODES[currentNodeIndex];
+    web3 = new Web3(nodeUrl);
+    log(`Web3 başlatıldı, düğüm: ${nodeUrl}`);
     return true;
   } catch (error) {
     log("Web3 başlatma hatası", error);
@@ -80,7 +89,9 @@ async function checkConnection() {
     log(`✅ BSC bağlantısı başarılı. Son blok: ${block}`);
     return true;
   } catch (error) {
-    log("❌ BSC bağlantı hatası", error);
+    log(`❌ BSC bağlantı hatası (düğüm: ${CONFIG.BSC_NODES[currentNodeIndex]})`, error);
+    currentNodeIndex = (currentNodeIndex + 1) % CONFIG.BSC_NODES.length;
+    log(`Düğüm değiştiriliyor: ${CONFIG.BSC_NODES[currentNodeIndex]}`);
     return false;
   }
 }
@@ -131,7 +142,26 @@ async function startEventListener() {
   }
 }
 
-// 10. BOT KOMUTLARI
+// 10. TELEGRAM POLLING YÖNETIMI
+let pollingRetries = 0;
+
+bot.on('polling_error', async (error) => {
+  log("Telegram polling hatası", error);
+  if (error.message.includes('409 Conflict')) {
+    log("Çoklu bot örneği algılandı. Polling durduruluyor...");
+    await bot.stopPolling();
+    pollingRetries++;
+    if (pollingRetries < CONFIG.MAX_POLLING_RETRIES) {
+      log(`Yeniden deneme ${pollingRetries}/${CONFIG.MAX_POLLING_RETRIES}...`);
+      setTimeout(() => bot.startPolling(), CONFIG.RECONNECT_INTERVAL);
+    } else {
+      log("Maksimum yeniden deneme sayısına ulaşıldı. Çıkılıyor...");
+      process.exit(1);
+    }
+  }
+});
+
+// 11. BOT KOMUTLARI
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, "🤖 Presale Bot Aktif!");
 });
@@ -141,7 +171,7 @@ bot.onText(/\/check/, async (msg) => {
   bot.sendMessage(msg.chat.id, isConnected ? "✅ BSC bağlantısı aktif" : "❌ BSC bağlantı hatası");
 });
 
-// 11. BAŞLATMA
+// 12. BAŞLATMA
 async function initialize() {
   try {
     // Çevre değişkenlerini kontrol et
@@ -155,6 +185,7 @@ async function initialize() {
     }
 
     // Telegram bot polling başlat
+    pollingRetries = 0;
     await bot.startPolling();
     log("Telegram bot polling başlatıldı");
 
@@ -183,7 +214,7 @@ async function initialize() {
   }
 }
 
-// 12. HATA YAKALAYICILAR
+// 13. HATA YAKALAYICILAR
 process.on('unhandledRejection', (error) => {
   log('İşlenmemiş hata:', error);
 });
@@ -193,7 +224,7 @@ process.on('uncaughtException', (error) => {
   process.exit(1);
 });
 
-// 13. ZARİF KAPATMA
+// 14. ZARİF KAPATMA
 process.on('SIGTERM', async () => {
   log('SIGTERM alındı. Temizlik yapılıyor...');
   try {
@@ -206,5 +237,5 @@ process.on('SIGTERM', async () => {
   }
 });
 
-// 14. UYGULAMAYI BAŞLAT
+// 15. UYGULAMAYI BAŞLAT
 initialize();
