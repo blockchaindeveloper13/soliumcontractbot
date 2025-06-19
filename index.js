@@ -17,8 +17,8 @@ const CONFIG = {
   POLLING_INTERVAL: 300,
   POLLING_TIMEOUT: 10,
   MAX_POLLING_RETRIES: 3,
-  EVENT_POLLING_INTERVAL: 60000, // Olay tarama sıklığı (60 saniye)
-  MAX_BLOCK_RANGE: 2, // Tek seferde taranacak maksimum blok sayısı
+  EVENT_POLLING_INTERVAL: 90000, // Olay tarama sıklığı (90 saniye)
+  MAX_BLOCK_RANGE: 1, // Tek seferde taranacak maksimum blok sayısı
   RETRY_DELAY: 15000, // Limit aşımı sonrası yeniden deneme gecikmesi (15 saniye)
   MAX_RETRIES: 3 // Limit aşımı için maksimum yeniden deneme sayısı
 };
@@ -428,7 +428,7 @@ bot.onText(/\/info/, async (msg) => {
       `🎯 Hard Cap: ${web3.utils.fromWei(hardCap, 'ether')} BNB\n` +
       `🎯 Soft Cap: ${web3.utils.fromWei(softCap, 'ether')} BNB\n` +
       `💸 Token Fiyatı: ${web3.utils.fromWei(tokenPrice, 'ether')} BNB\n` +
-      `📈 Birim Başına Token: ${Number(tokensPerUnit)}`; // tokensPerUnit için sadeleştirme kaldırıldı
+      `📈 Birim Başına Token: ${web3.utils.fromWei(tokensPerUnit, 'ether')}`; // tokensPerUnit sadeleştirildi
     await bot.sendMessage(msg.chat.id, message);
     log(`Durum bilgisi gönderildi: ${message}`);
   } catch (error) {
@@ -456,9 +456,9 @@ bot.on('polling_error', async (error) => {
         } catch (retryError) {
           log("Polling yeniden başlatma hatası", retryError);
         }
-      }, CONFIG.RECONNECT_INTERVAL);
+      }, CONFIG.RECONNECT_INTERVAL * (pollingRetries + 1)); // Gecikmeyi artır
     } else {
-      log("Maksimum yeniden deneme sayısına ulaşıldı. Çıkılıyor...");
+      log("Maksimum yeniden deneme sayısına ulaşıldı. Yeni bir TELEGRAM_API_KEY kullanmayı deneyin.");
       process.exit(1);
     }
   } else {
