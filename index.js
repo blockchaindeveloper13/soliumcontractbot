@@ -69,16 +69,9 @@ const initializeWeb3 = () => {
 };
 
 // 6. SÖZLEŞME ABI
-// Sağladığınız TokenPresale sözleşmesi ABI'sı
 const contractABI = [
   {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "_token",
-        "type": "address"
-      }
-    ],
+    "inputs": [{"internalType": "address", "name": "_token", "type": "address"}],
     "stateMutability": "nonpayable",
     "type": "constructor"
   },
@@ -109,30 +102,10 @@ const contractABI = [
   {
     "anonymous": false,
     "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "buyer",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "bnbAmount",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "tokenAmount",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
-      }
+      {"indexed": true, "internalType": "address", "name": "buyer", "type": "address"},
+      {"indexed": false, "internalType": "uint256", "name": "bnbAmount", "type": "uint256"},
+      {"indexed": false, "internalType": "uint256", "name": "tokenAmount", "type": "uint256"},
+      {"indexed": false, "internalType": "uint256", "name": "timestamp", "type": "uint256"}
     ],
     "name": "TokensPurchased",
     "type": "event"
@@ -154,52 +127,28 @@ const contractABI = [
   {
     "inputs": [],
     "name": "getRemainingTokens",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
     "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [],
     "name": "getTotalBNB",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
     "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [],
     "name": "hardCap",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
     "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [],
     "name": "owner",
-    "outputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
+    "outputs": [{"internalType": "address", "name": "", "type": "address"}],
     "stateMutability": "view",
     "type": "function"
   },
@@ -220,76 +169,40 @@ const contractABI = [
   {
     "inputs": [],
     "name": "saleEnded",
-    "outputs": [
-      {
-        "internalType": "bool",
-        "name": "",
-        "type": "bool"
-      }
-    ],
+    "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
     "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [],
     "name": "salePaused",
-    "outputs": [
-      {
-        "internalType": "bool",
-        "name": "",
-        "type": "bool"
-      }
-    ],
+    "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
     "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [],
     "name": "saleToken",
-    "outputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
+    "outputs": [{"internalType": "address", "name": "", "type": "address"}],
     "stateMutability": "view",
     "type": "function"
   },
   {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "_token",
-        "type": "address"
-      }
-    ],
+    "inputs": [{"internalType": "address", "name": "_token", "type": "address"}],
     "name": "setTokenAddress",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
   },
   {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "_price",
-        "type": "uint256"
-      }
-    ],
+    "inputs": [{"internalType": "uint256", "name": "_price", "type": "uint256"}],
     "name": "setTokenPrice",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
   },
   {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "_amount",
-        "type": "uint256"
-      }
-    ],
+    "inputs": [{"internalType": "uint256", "name": "_amount", "type": "uint256"}],
     "name": "setTokensPerUnit",
     "outputs": [],
     "stateMutability": "nonpayable",
@@ -298,13 +211,7 @@ const contractABI = [
   {
     "inputs": [],
     "name": "softCap",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
     "stateMutability": "view",
     "type": "function"
   },
@@ -318,50 +225,26 @@ const contractABI = [
   {
     "inputs": [],
     "name": "tokenPrice",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
     "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [],
     "name": "tokensPerUnit",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
     "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [],
     "name": "totalRaised",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
     "stateMutability": "view",
     "type": "function"
   },
   {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "_token",
-        "type": "address"
-      }
-    ],
+    "inputs": [{"internalType": "address", "name": "_token", "type": "address"}],
     "name": "withdrawForeignTokens",
     "outputs": [],
     "stateMutability": "nonpayable",
@@ -414,8 +297,9 @@ async function initializeContract() {
     // ABI'deki olayları kontrol et
     const events = contract.options.jsonInterface.filter(item => item.type === 'event');
     const eventNames = events.map(event => event.name);
+    log(`Sözleşmede mevcut olaylar: ${eventNames.join(', ') || 'Yok'}`);
     if (!eventNames.includes('TokensPurchased')) {
-      throw new Error(`TokensPurchased olayı ABI'de mevcut değil. Mevcut olaylar: ${eventNames.join(', ') || 'Yok'}`);
+      throw new Error(`TokensPurchased olayı ABI'de mevcut değil.`);
     }
     log(`Sözleşme başlatıldı: ${CONFIG.CONTRACT_ADDRESS}`);
     return true;
@@ -425,19 +309,33 @@ async function initializeContract() {
   }
 }
 
-// 9. OLAY DİNLEYİCİ
+// 9. OLAY DİNLEYİCİ (Alternatif: web3.eth.subscribe)
 async function startEventListener() {
   try {
     if (!contract) throw new Error("Sözleşme nesnesi başlatılmadı.");
-    log("Olay dinleyici başlatılıyor...");
-    // web3.js 4.x için olay dinleme
-    const subscription = contract.events.TokensPurchased({
-      fromBlock: 'latest'
+    log("Olay dinleyici başlatılıyor (web3.eth.subscribe)...");
+
+    // TokensPurchased olayının topic'ini hesapla
+    const eventSignature = web3.eth.abi.encodeEventSignature(
+      contract.options.jsonInterface.find(item => item.name === 'TokensPurchased')
+    );
+
+    // Olayları dinle
+    const subscription = web3.eth.subscribe('logs', {
+      address: CONFIG.CONTRACT_ADDRESS,
+      topics: [eventSignature]
     })
-      .on('data', async (event) => {
+      .on('data', async (logData) => {
         try {
-          const bnbAmount = web3.utils.fromWei(event.returnValues.bnbAmount, 'ether');
-          const message = `🚀 Yeni Satın Alma!\n👤 ${event.returnValues.buyer}\n💰 ${bnbAmount} BNB\n🪙 ${event.returnValues.tokenAmount} Token`;
+          // Olay verilerini çöz
+          const decodedLog = web3.eth.abi.decodeLog(
+            contract.options.jsonInterface.find(item => item.name === 'TokensPurchased').inputs,
+            logData.data,
+            logData.topics.slice(1)
+          );
+
+          const bnbAmount = web3.utils.fromWei(decodedLog.bnbAmount, 'ether');
+          const message = `🚀 Yeni Satın Alma!\n👤 ${decodedLog.buyer}\n💰 ${bnbAmount} BNB\n🪙 ${decodedLog.tokenAmount} Token`;
           await bot.sendMessage(CONFIG.CHAT_ID, message);
           log(`Bildirim gönderildi: ${message}`);
         } catch (error) {
@@ -451,6 +349,7 @@ async function startEventListener() {
       .on('connected', (subscriptionId) => {
         log(`Olay dinleyici bağlandı, abonelik ID: ${subscriptionId}`);
       });
+
   } catch (error) {
     log("Olay dinleyici başlatma hatası", error);
     setTimeout(startEventListener, CONFIG.RECONNECT_INTERVAL);
