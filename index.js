@@ -56,7 +56,7 @@ try {
 let web3;
 let contract;
 let currentNodeIndex = 0;
-let lastProcessedBlock = 0;
+let lastProcessedBlock = BigInt(0); // BigInt olarak tanımla
 
 const initializeWeb3 = () => {
   try {
@@ -304,7 +304,7 @@ async function initializeContract() {
       throw new Error(`TokensPurchased olayı ABI'de mevcut değil.`);
     }
     // Son bloğu al ve başlangıç noktası olarak ayarla
-    lastProcessedBlock = await web3.eth.getBlockNumber();
+    lastProcessedBlock = BigInt(await web3.eth.getBlockNumber());
     log(`Son işlenen blok: ${lastProcessedBlock}`);
     log(`Sözleşme başlatıldı: ${CONFIG.CONTRACT_ADDRESS}`);
     return true;
@@ -328,17 +328,17 @@ async function startEventPolling() {
     // Düzenli aralıklarla olayları tara
     setInterval(async () => {
       try {
-        const currentBlock = await web3.eth.getBlockNumber();
+        const currentBlock = BigInt(await web3.eth.getBlockNumber());
         if (currentBlock <= lastProcessedBlock) {
           log(`Yeni blok yok. Son işlenen blok: ${lastProcessedBlock}`);
           return;
         }
 
-        log(`Olaylar taranıyor, blok aralığı: ${lastProcessedBlock + 1} - ${currentBlock}`);
+        log(`Olaylar taranıyor, blok aralığı: ${lastProcessedBlock + BigInt(1)} - ${currentBlock}`);
         const logs = await web3.eth.getPastLogs({
           address: CONFIG.CONTRACT_ADDRESS,
           topics: [eventSignature],
-          fromBlock: lastProcessedBlock + 1,
+          fromBlock: lastProcessedBlock + BigInt(1),
           toBlock: currentBlock
         });
 
@@ -383,7 +383,15 @@ bot.on('polling_error', async (error) => {
     pollingRetries++;
     if (pollingRetries < CONFIG.MAX_POLLING_RETRIES) {
       log(`Yeniden deneme ${pollingRetries}/${CONFIG.MAX_POLLING_RETRIES}...`);
-      setTimeout(() => bot.startPolling(), CONFIG.RECONNECT_INTERVAL);
+      setTimeout(async () => {
+        try {
+          await bot.startPolling();
+          log("Telegram bot polling yeniden başlatıldı");
+          pollingRetries = 0; // Başarılı olursa sıfırla
+        } catch (retryError) {
+          log("Polling yeniden başlatma hatası", retryError);
+        }
+      }, CONFIG.RECONNECT_INTERVAL);
     } else {
       log("Maksimum yeniden deneme sayısına ulaşıldı. Çıkılıyor...");
       process.exit(1);
