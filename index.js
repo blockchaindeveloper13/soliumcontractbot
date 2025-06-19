@@ -12,7 +12,7 @@ const CONFIG = {
   TELEGRAM_API_KEY: process.env.TELEGRAM_API_KEY,
   CHAT_ID: process.env.CHAT_ID,
   CONTRACT_ADDRESS: process.env.CONTRACT_ADDRESS,
-  BSC_NODES, // Sabit düğüm listesi
+  BSC_NODES,
   RECONNECT_INTERVAL: 5000,
   POLLING_INTERVAL: 300,
   POLLING_TIMEOUT: 10,
@@ -105,6 +105,11 @@ async function initializeContract() {
     if (code === '0x') {
       throw new Error("Geçersiz sözleşme adresi: Sözleşme bulunamadı.");
     }
+    // ABI'deki olayın mevcut olduğunu kontrol et
+    const eventExists = contract.events.TokensPurchased;
+    if (!eventExists) {
+      throw new Error("TokensPurchased olayı sözleşmede mevcut değil veya ABI yanlış.");
+    }
     log(`Sözleşme başlatıldı: ${CONFIG.CONTRACT_ADDRESS}`);
     return true;
   } catch (error) {
@@ -118,7 +123,7 @@ async function startEventListener() {
   try {
     if (!contract) throw new Error("Sözleşme nesnesi başlatılmadı.");
     log("Olay dinleyici başlatılıyor...");
-    const subscription = contract.events.TokensPurchased({ fromBlock: 'latest' })
+    contract.events.TokensPurchased({ fromBlock: 'latest' })
       .on('data', async (event) => {
         try {
           const bnbAmount = web3.utils.fromWei(event.returnValues.bnbAmount, 'ether');
