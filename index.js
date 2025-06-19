@@ -16,7 +16,8 @@ const CONFIG = {
   RECONNECT_INTERVAL: 5000,
   POLLING_INTERVAL: 300,
   POLLING_TIMEOUT: 10,
-  MAX_POLLING_RETRIES: 3
+  MAX_POLLING_RETRIES: 3,
+  EVENT_POLLING_INTERVAL: 5000 // Olay tarama sıklığı (5 saniye)
 };
 
 // 2. LOGLAMA
@@ -55,6 +56,7 @@ try {
 let web3;
 let contract;
 let currentNodeIndex = 0;
+let lastProcessedBlock = 0;
 
 const initializeWeb3 = () => {
   try {
@@ -301,6 +303,9 @@ async function initializeContract() {
     if (!eventNames.includes('TokensPurchased')) {
       throw new Error(`TokensPurchased olayı ABI'de mevcut değil.`);
     }
+    // Son bloğu al ve başlangıç noktası olarak ayarla
+    lastProcessedBlock = await web3.eth.getBlockNumber();
+    log(`Son işlenen blok: ${lastProcessedBlock}`);
     log(`Sözleşme başlatıldı: ${CONFIG.CONTRACT_ADDRESS}`);
     return true;
   } catch (error) {
@@ -309,50 +314,61 @@ async function initializeContract() {
   }
 }
 
-// 9. OLAY DİNLEYİCİ (Alternatif: web3.eth.subscribe)
-async function startEventListener() {
+// 9. OLAY TARAMA (POLLING)
+async function startEventPolling() {
   try {
     if (!contract) throw new Error("Sözleşme nesnesi başlatılmadı.");
-    log("Olay dinleyici başlatılıyor (web3.eth.subscribe)...");
+    log("Olay tarama başlatılıyor (web3.eth.getPastLogs)...");
 
     // TokensPurchased olayının topic'ini hesapla
     const eventSignature = web3.eth.abi.encodeEventSignature(
       contract.options.jsonInterface.find(item => item.name === 'TokensPurchased')
     );
 
-    // Olayları dinle
-    const subscription = web3.eth.subscribe('logs', {
-      address: CONFIG.CONTRACT_ADDRESS,
-      topics: [eventSignature]
-    })
-      .on('data', async (logData) => {
-        try {
-          // Olay verilerini çöz
-          const decodedLog = web3.eth.abi.decodeLog(
-            contract.options.jsonInterface.find(item => item.name === 'TokensPurchased').inputs,
-            logData.data,
-            logData.topics.slice(1)
-          );
-
-          const bnbAmount = web3.utils.fromWei(decodedLog.bnbAmount, 'ether');
-          const message = `🚀 Yeni Satın Alma!\n👤 ${decodedLog.buyer}\n💰 ${bnbAmount} BNB\n🪙 ${decodedLog.tokenAmount} Token`;
-          await bot.sendMessage(CONFIG.CHAT_ID, message);
-          log(`Bildirim gönderildi: ${message}`);
-        } catch (error) {
-          log("Olay işleme hatası", error);
+    // Düzenli aralıklarla olayları tara
+    setInterval(async () => {
+      try {
+        const currentBlock = await web3.eth.getBlockNumber();
+        if (currentBlock <= lastProcessedBlock) {
+          log(`Yeni blok yok. Son işlenen blok: ${lastProcessedBlock}`);
+          return;
         }
-      })
-      .on('error', (error) => {
-        log("Olay dinleyici hatası", error);
-        setTimeout(startEventListener, CONFIG.RECONNECT_INTERVAL);
-      })
-      .on('connected', (subscriptionId) => {
-        log(`Olay dinleyici bağlandı, abonelik ID: ${subscriptionId}`);
-      });
 
+        log(`Olaylar taranıyor, blok aralığı: ${lastProcessedBlock + 1} - ${currentBlock}`);
+        const logs = await web3.eth.getPastLogs({
+          address: CONFIG.CONTRACT_ADDRESS,
+          topics: [eventSignature],
+          fromBlock: lastProcessedBlock + 1,
+          toBlock: currentBlock
+        });
+
+        for (const logData of logs) {
+          try {
+            // Olay verilerini çöz
+            const decodedLog = web3.eth.abi.decodeLog(
+              contract.options.jsonInterface.find(item => item.name === 'TokensPurchased').inputs,
+              logData.data,
+              logData.topics.slice(1)
+            );
+
+            const bnbAmount = web3.utils.fromWei(decodedLog.bnbAmount, 'ether');
+            const message = `🚀 Yeni Satın Alma!\n👤 ${decodedLog.buyer}\n💰 ${bnbAmount} BNB\n🪙 ${decodedLog.tokenAmount} Token`;
+            await bot.sendMessage(CONFIG.CHAT_ID, message);
+            log(`Bildirim gönderildi: ${message}`);
+          } catch (error) {
+            log("Olay işleme hatası", error);
+          }
+        }
+
+        lastProcessedBlock = currentBlock;
+        log(`Son işlenen blok güncellendi: ${lastProcessedBlock}`);
+      } catch (error) {
+        log("Olay tarama hatası", error);
+      }
+    }, CONFIG.EVENT_POLLING_INTERVAL);
   } catch (error) {
-    log("Olay dinleyici başlatma hatası", error);
-    setTimeout(startEventListener, CONFIG.RECONNECT_INTERVAL);
+    log("Olay tarama başlatma hatası", error);
+    setTimeout(startEventPolling, CONFIG.RECONNECT_INTERVAL);
   }
 }
 
@@ -419,8 +435,8 @@ async function initialize() {
       return;
     }
 
-    // Olay dinleyiciyi başlat
-    await startEventListener();
+    // Olay taramayı başlat
+    await startEventPolling();
     log(`🤖 Bot başlatıldı. Kontrat dinleniyor: ${CONFIG.CONTRACT_ADDRESS}`);
   } catch (error) {
     log("Başlatma hatası", error);
