@@ -390,6 +390,7 @@ async function startEventPolling() {
 }
 
 // 10. SÖZLEŞME DURUM SORGULAMA (/info KOMUTU)
+// 10. SÖZLEŞME DURUM SORGULAMA (/info KOMUTU)
 bot.onText(/\/info/, async (msg) => {
   try {
     if (!contract) throw new Error("Sözleşme nesnesi başlatılmadı.");
@@ -403,14 +404,14 @@ bot.onText(/\/info/, async (msg) => {
     const tokensPerUnit = BigInt(await contract.methods.tokensPerUnit().call());
 
     const message = `📊 Sözleşme Durumu\n` +
-      `💰 Toplanan Fon : ${web3.utils.fromWei(totalRaised, 'ether')} BNB\n` +
+      `💰 Toplanan Fon: ${web3.utils.fromWei(totalRaised, 'ether')} BNB\n` +
       `🪙 Kalan Tokenlar: ${web3.utils.fromWei(remainingTokens, 'ether')} Token\n` +
       `⏸ Satış Durduruldu mu: ${salePaused ? 'Evet' : 'Hayır'}\n` +
       `🏁 Satış Bitti mi: ${saleEnded ? 'Evet' : 'Hayır'}\n` +
       `🎯 Hard Cap: ${web3.utils.fromWei(hardCap, 'ether')} BNB\n` +
       `🎯 Soft Cap: ${web3.utils.fromWei(softCap, 'ether')} BNB\n` +
       `💸 Token Fiyatı: ${web3.utils.fromWei(tokenPrice, 'ether')} BNB\n` +
-      `📈 Birim Başına Token: ${tokensPerUnit}`; // tokensPerUnit sadeleştirildi
+      `📈 Birim Başına Token: ${web3.utils.fromWei(tokensPerUnit, 'ether')}`; // Düzeltildi
     await bot.sendMessage(msg.chat.id, message);
     log(`Durum bilgisi gönderildi: ${message}`);
   } catch (error) {
